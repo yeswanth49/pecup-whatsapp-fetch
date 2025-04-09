@@ -78,7 +78,7 @@ let lastProcessedTime = new Date();
 
 // --- Reminder JSON Schema ---
 const reminderSchema = z.object({
-    title: z.string().describe("A clear, concise title for the reminder or task (max 10 words)."),
+    title: z.string().describe("A clear, concise title for the reminder or task (max 10 words).."),
     description: z.string().describe("A detailed description of the task, event, or information to be reminded of."),
     due_date: z.string().optional().describe("The due date in YYYY-MM-DD ISO 8601 format. Infer from text and current date. Omit if not found/inferrable.")
 });
