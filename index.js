@@ -4,6 +4,7 @@ const { Boom } = require('@hapi/boom');
 const fs = require('fs');
 const path = require('path');
 const P = require('pino');
+const http = require('http'); // <<<--- ADDED: Node.js HTTP module
 
 // --- Vercel AI SDK Imports ---
 require('dotenv').config(); // Still needed for standard Node.js
@@ -20,6 +21,10 @@ if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) throw new Error("Missing GOOGLE_S
 if (!process.env.GOOGLE_PRIVATE_KEY) throw new Error("Missing GOOGLE_PRIVATE_KEY env variable.");
 if (!process.env.GOOGLE_SHEET_ID) throw new Error("Missing GOOGLE_SHEET_ID env variable.");
 if (!process.env.GOOGLE_SHEET_NAME) throw new Error("Missing GOOGLE_SHEET_NAME env variable.");
+
+// <<<--- ADDED: Define Port for Web Service ---
+// Render provides the PORT environment variable for Web Services
+const PORT = process.env.PORT || 3000; // Use Render's port, or 3000 locally
 
 // --- Initialize AI Client (Google) ---
 const googleAI = createGoogleGenerativeAI();
@@ -43,32 +48,32 @@ const DEFAULT_STATUS = 'To DO';   // Default for new reminders
 
 // Function to authenticate and get sheets API client
 async function getSheetsClient() {
-  console.log("[Google Sheets]: Attempting to get Google Sheets client...");
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY;
+    console.log("[Google Sheets]: Attempting to get Google Sheets client...");
+    const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+    const key = process.env.GOOGLE_PRIVATE_KEY;
 
-  if (!email || !key) {
-    console.error("[Google Sheets Auth Error]: Credentials missing.");
-    throw new Error("Google Sheets API credentials missing.");
-  } else {
-    console.log("[Google Sheets]: Found GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY environment variables.");
-  }
+    if (!email || !key) {
+        console.error("[Google Sheets Auth Error]: Credentials missing.");
+        throw new Error("Google Sheets API credentials missing.");
+    } else {
+        console.log("[Google Sheets]: Found GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY environment variables.");
+    }
 
-  try {
-      const auth = new google.auth.GoogleAuth({
-        credentials: {
-          client_email: email,
-          private_key: key.replace(/\\n/g, '\n'),
-        },
-        scopes: SHEETS_SCOPE,
-      });
-      const authClient = await auth.getClient();
-      console.log("[Google Sheets]: Successfully obtained Google auth client.");
-      return google.sheets({ version: 'v4', auth: authClient });
-  } catch (error) {
-       console.error("[Google Sheets Auth Error]: Failed to create Google auth client:", error);
-       throw new Error(`Failed to authenticate with Google Sheets API. Check credentials and scope. Error: ${error.message}`);
-  }
+    try {
+        const auth = new google.auth.GoogleAuth({
+            credentials: {
+            client_email: email,
+            private_key: key.replace(/\\n/g, '\n'),
+            },
+            scopes: SHEETS_SCOPE,
+        });
+        const authClient = await auth.getClient();
+        console.log("[Google Sheets]: Successfully obtained Google auth client.");
+        return google.sheets({ version: 'v4', auth: authClient });
+    } catch (error) {
+        console.error("[Google Sheets Auth Error]: Failed to create Google auth client:", error);
+        throw new Error(`Failed to authenticate with Google Sheets API. Check credentials and scope. Error: ${error.message}`);
+    }
 }
 
 
@@ -136,12 +141,12 @@ async function syncRemindersToSheet(remindersFromLLM) {
                     });
                 }
             } else {
-                 console.warn(`[Google Sheets Sync]: Skipping row ${i+1} due to missing title or insufficient columns.`);
+                console.warn(`[Google Sheets Sync]: Skipping row ${i+1} due to missing title or insufficient columns.`);
             }
         }
         console.log(`[Google Sheets Sync]: Mapped ${existingRemindersMap.size} unique existing reminders.`);
     } else {
-         console.log("[Google Sheets Sync]: No existing data rows found or only header exists.");
+        console.log("[Google Sheets Sync]: No existing data rows found or only header exists.");
     }
 
     // --- Process reminders from LLM ---
@@ -173,15 +178,15 @@ async function syncRemindersToSheet(remindersFromLLM) {
 
         } else {
             // --- APPEND ---
-             console.log(`[Google Sheets Sync]: Adding new reminder "${reminder.title}" to append list.`);
-             const rowDataForAppend = [
+            console.log(`[Google Sheets Sync]: Adding new reminder "${reminder.title}" to append list.`);
+            const rowDataForAppend = [
                 reminder.title.trim(),
                 reminder.due_date || '', // Send date as string
                 reminder.description || '',
                 DEFAULT_ICON_TYPE,
                 DEFAULT_STATUS
-             ];
-             while(rowDataForAppend.length < NUM_COLUMNS) { rowDataForAppend.push(''); }
+            ];
+            while(rowDataForAppend.length < NUM_COLUMNS) { rowDataForAppend.push(''); }
             remindersToAppend.push(rowDataForAppend);
         }
     }
@@ -191,17 +196,17 @@ async function syncRemindersToSheet(remindersFromLLM) {
         console.log(`[Google Sheets Sync]: Performing batch update for ${updatesToPerform.length} reminders...`);
         try {
             const batchUpdateRequest = {
-                 spreadsheetId: spreadsheetId,
-                 resource: {
-                     valueInputOption: 'RAW', // <<< Ensures date string is stored as text
-                     data: updatesToPerform
-                 }
+                spreadsheetId: spreadsheetId,
+                resource: {
+                    valueInputOption: 'RAW', // <<< Ensures date string is stored as text
+                    data: updatesToPerform
+                }
             };
             const result = await sheetsClient.spreadsheets.values.batchUpdate(batchUpdateRequest);
             console.log(`[Google Sheets Sync]: Batch update successful. Responses: ${result.data.totalUpdatedRows || 0} rows updated across ${result.data.responses?.length || 0} ranges.`);
         } catch (error) {
             console.error('[Google Sheets Sync Error]: Failed during batch update:', error.message);
-             if (error.response?.data?.error) { console.error('[Google API Error Details]:', JSON.stringify(error.response.data.error, null, 2)); }
+            if (error.response?.data?.error) { console.error('[Google API Error Details]:', JSON.stringify(error.response.data.error, null, 2)); }
         }
     } else {
         console.log("[Google Sheets Sync]: No existing reminders found requiring updates.");
@@ -221,8 +226,8 @@ async function syncRemindersToSheet(remindersFromLLM) {
             const result = await sheetsClient.spreadsheets.values.append(appendRequest);
             console.log(`[Google Sheets Sync]: Append successful. Appended ${result.data.updates?.updatedRows || 0} rows.`);
         } catch (error) {
-             console.error('[Google Sheets Sync Error]: Failed during append:', error.message);
-             if (error.response?.data?.error) { console.error('[Google API Error Details]:', JSON.stringify(error.response.data.error, null, 2)); }
+            console.error('[Google Sheets Sync Error]: Failed during append:', error.message);
+            if (error.response?.data?.error) { console.error('[Google API Error Details]:', JSON.stringify(error.response.data.error, null, 2)); }
         }
     } else {
         console.log("[Google Sheets Sync]: No new reminders to append.");
@@ -249,21 +254,29 @@ async function processRecentMessages() {
 
     let messageTranscript = "";
     messagesToProcess.forEach(msg => {
-        messageTranscript += `[${msg.timestamp.toISOString()}] [Group: ${msg.groupName}] [Sender: ${msg.sender}]: ${msg.text}\n`;
+        // Attempt to get group name if available, otherwise use JID
+        let groupIdentifier = msg.groupName || msg.groupJid;
+        messageTranscript += `[${msg.timestamp.toISOString()}] [Group: ${groupIdentifier}] [Sender: ${msg.sender}]: ${msg.text}\n`;
     });
 
-    messageStore = messageStore.filter(msg => msg.timestamp <= lastProcessedTime); // Clear processed
+    // Clear processed messages *before* AI call (or handle potential AI errors carefully)
+    const processedMessageTimestamps = messagesToProcess.map(m => m.timestamp);
+    messageStore = messageStore.filter(msg => !processedMessageTimestamps.includes(msg.timestamp));
     lastProcessedTime = processingStartTime; // Update time
 
     console.log(`[AI Batch]: Sending transcript to ${llmModel} for reminder extraction...`);
     let reminderResults = [];
 
     try {
-        const currentDate = new Date().toISOString().split('T')[0];
-        // Using the corrected prompt
+        // Use current date in India timezone if possible, otherwise fallback to UTC
+        const currentDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD format for India
+        // Fallback if timezone fails (shouldn't normally)
+        const fallbackDate = new Date().toISOString().split('T')[0];
+        const dateForPrompt = currentDate || fallbackDate;
+
         const prompt = `You are an AI assistant analyzing a transcript of WhatsApp group messages from the last processing period for a 'Resource Hub Dashboard'. Your task is to identify any potential tasks, deadlines, events, or important information mentioned in *any* of the messages that should be turned into reminders. Avoid creating duplicate reminders if the same task is mentioned multiple times, consolidate if possible.
 
-Current Date: ${currentDate}
+Current Date: ${dateForPrompt} (India Time)
 
 Analyze the following transcript:
 --- TRANSCRIPT START ---
@@ -284,18 +297,22 @@ If no reminders are found in the transcript, return an empty JSON array: [].`;
         });
         reminderResults = object;
 
-        if (reminderResults) {
+        if (reminderResults && Array.isArray(reminderResults)) { // Added check if it's an array
             console.log("[AI Batch]: Reminders received from LLM:", JSON.stringify(reminderResults, null, 2));
             await syncRemindersToSheet(reminderResults); // Call sync function
         } else {
-             console.log("[AI Batch]: No valid reminder list received from LLM.");
+            console.log("[AI Batch]: No valid reminder list (or empty array) received from LLM.");
+            // Ensure sync is not called with invalid data
+            await syncRemindersToSheet([]);
         }
 
     } catch (error) {
         console.error("[AI Batch Error]: Failed processing reminders:", error);
         if (error.cause) console.error("Error Cause:", error.cause);
+        // Consider re-adding messages if AI fails? Or log for manual check.
+        // For now, messages are already removed, so potential loss on error.
     } finally {
-         console.log(`--- Hourly Sync Run Complete ---`);
+        console.log(`--- Hourly Sync Run Complete ---`);
     }
 }
 
@@ -303,37 +320,38 @@ If no reminders are found in the transcript, return an empty JSON array: [].`;
 // --- Baileys Connection Function ---
 async function startSock() {
     try {
-        sheetsClient = await getSheetsClient();
+        sheetsClient = await getSheetsClient(); // Initialize Sheets client
     } catch (error) {
         console.error("FATAL: Could not initialize Google Sheets Client on startup. Sheet sync will be disabled.", error.message);
+        // Decide if you want to continue without sheets or exit
+        // For now, we continue, but sync will fail later if called.
     }
 
-    // --- Baileys Auth State Loading (Debug logs optional now) ---
-    console.log("[Debug]: Attempting to load auth state from ./auth");
+    // --- Baileys Auth State Loading ---
+    console.log("[Auth]: Attempting to load auth state from ./auth");
     let state, saveCreds;
     try {
         const authInfo = await useMultiFileAuthState('./auth');
-        console.log("[Debug]: useMultiFileAuthState call finished."); // Keep basic log
         state = authInfo.state;
         saveCreds = authInfo.saveCreds;
+        console.log("[Auth]: Auth state loaded successfully.");
     } catch (error) {
+         console.error("[Auth Error]: Failed to get authentication state:", error.message);
+         // Depending on severity, you might want to exit
          throw new Error("Failed to get authentication state: " + error.message);
     }
     if (!state || !state.creds || !state.keys) {
-        console.error("FATAL: Invalid authentication state loaded. Cannot proceed.");
-        process.exit(1);
+        console.error("FATAL: Invalid authentication state loaded. Credentials or keys missing. Cannot proceed.");
+        process.exit(1); // Exit if auth state is fundamentally broken
     }
-    // --- End Baileys Auth Debug ---
-
 
     const { version, isLatest } = await fetchLatestBaileysVersion();
-
-    console.log(`using WA v${version.join('.')} / AI Model: ${llmModel} (Google - Hourly Sync + Sheets), isLatest: ${isLatest}`);
-    console.log(`Reminder sync will run every hour.`);
+    console.log(`Using WA v${version.join('.')} / AI Model: ${llmModel} (Google - Hourly Sync + Sheets), isLatest: ${isLatest}`);
+    console.log(`Hourly reminder sync configured.`);
 
     const sock = makeWASocket({
         version,
-        logger: P({ level: 'silent' }), // Changed back to 'silent' - set to 'info'/'debug' if needed
+        logger: P({ level: 'silent' }), // 'info' or 'debug' for more logs if needed
         printQRInTerminal: true,
         auth: state,
      });
@@ -341,55 +359,146 @@ async function startSock() {
     // --- Attach saveCreds handler ---
     if(saveCreds) {
         sock.ev.on('creds.update', saveCreds);
-        console.log("[Debug]: Attached creds.update handler."); // Keep or remove
+        console.log("[Auth]: Attached creds.update handler.");
     } else {
-        console.error("[Debug Error]: saveCreds function is missing! Session might not persist.");
+        console.error("[Error]: saveCreds function is missing from useMultiFileAuthState! Session might not persist across restarts.");
     }
-
 
     // --- Event Handlers ---
     sock.ev.on('messages.upsert', async ({ messages }) => {
-         const message = messages[0];
-         if (!message.message || message.key.fromMe) return;
-         const senderJid = message.key?.remoteJid;
-         if (!senderJid || !isJidGroup(senderJid)) return;
-         const text = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
-         if (!text.trim()) return;
-         const timestamp = message.messageTimestamp;
-         const messageDateTime = new Date(timestamp * 1000);
-         const participant = message.key.participant || senderJid;
-         let groupName = senderJid;
-         try { /* Fetch group name if needed */ } catch (err) { /* ignore */ }
-         messageStore.push({ timestamp: messageDateTime, sender: participant, groupJid: senderJid, groupName: groupName, text: text });
-         // Optional: Reduce logging verbosity here if stable
-         // console.log(`[${messageDateTime.toLocaleString()}] [Stored] Group: ${groupName} | Sender: ${participant} | Msg: ${text.substring(0, 50)}...`);
+        const message = messages[0];
+        // Basic checks to ignore irrelevant messages
+        if (!message.message || message.key.fromMe || !message.key.remoteJid) {
+            return;
+        }
+
+        const senderJid = message.key.remoteJid;
+        // Only process messages from groups
+        if (!isJidGroup(senderJid)) {
+            // console.log(`[Msg Ignore]: Ignoring non-group message from ${senderJid}`);
+            return;
+        }
+
+        const text = message.message?.conversation || message.message?.extendedTextMessage?.text || message.message?.imageMessage?.caption || message.message?.videoMessage?.caption || '';
+        // Ignore empty messages
+        if (!text.trim()) {
+            return;
+        }
+
+        const timestamp = message.messageTimestamp; // Unix timestamp (seconds or ms?) Baileys usually uses seconds.
+        // Convert timestamp to Date object (handle seconds vs ms if necessary - assume seconds)
+        const messageDateTime = new Date((typeof timestamp === 'number' ? timestamp : timestamp.low) * 1000);
+
+        const participant = message.key.participant || senderJid; // Sender's JID within the group
+        let groupName = senderJid; // Default to JID if name fetch fails
+
+        // Attempt to fetch group metadata for name (can be cached)
+        try {
+            const metadata = await sock.groupMetadata(senderJid);
+            groupName = metadata.subject || senderJid;
+        } catch (err) {
+            console.warn(`[Group Metadata Warn]: Could not fetch metadata for group ${senderJid}: ${err.message}`);
+            // Continue with JID as groupName
+        }
+
+        // Store relevant message info
+        messageStore.push({
+            timestamp: messageDateTime,
+            sender: participant,
+            groupJid: senderJid,
+            groupName: groupName, // Store fetched name or JID
+            text: text.trim()
+        });
+
+        // Optional: Log stored message confirmation (can be verbose)
+        // console.log(`[${messageDateTime.toLocaleString()}] [Stored] Group: ${groupName} | Sender: ${participant} | Msg: ${text.substring(0, 50)}...`);
     });
 
     // Handle connection updates and start interval timer
-     sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error instanceof Boom) && lastDisconnect.error.output?.statusCode !== DisconnectReason.loggedOut;
-             console.log('connection closed due to', lastDisconnect?.error, ', reconnecting:', shouldReconnect);
-             if(lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
-                console.error("Connection closed: Logged out. Please delete auth folder and re-scan QR code.");
-             } else if (shouldReconnect) {
-                setTimeout(startSock, 5000);
-             }
+            console.log('Connection closed due to:', lastDisconnect?.error?.message || 'Unknown reason', ', Reconnecting:', shouldReconnect);
+
+            if(lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut) {
+                console.error("‼️ CONNECTION CLOSED: LOGGED OUT ‼️");
+                console.error("Please delete the './auth' folder and re-scan the QR code.");
+                // Stop the interval timer if it exists
+                if (global.hourlyIntervalId) {
+                    clearInterval(global.hourlyIntervalId);
+                    console.log("Stopped hourly processing interval due to logout.");
+                }
+                process.exit(1); // Exit script on logout to force re-auth
+            } else if (shouldReconnect) {
+                // Stop interval timer before attempting reconnect to avoid duplicates
+                 if (global.hourlyIntervalId) {
+                    clearInterval(global.hourlyIntervalId);
+                    console.log("Stopped hourly processing interval during reconnection attempt.");
+                    delete global.hourlyIntervalId; // Clear the variable
+                }
+                console.log("Attempting to reconnect in 5 seconds...");
+                setTimeout(startSock, 5000); // Re-run the main connection logic
+            } else {
+                 console.log("Connection closed. Not attempting automatic reconnection.");
+                 // Stop interval timer if connection is closed and not reconnecting
+                 if (global.hourlyIntervalId) {
+                    clearInterval(global.hourlyIntervalId);
+                    console.log("Stopped hourly processing interval.");
+                 }
+            }
         } else if (connection === 'open') {
-             console.log('connection opened');
-             if (global.hourlyIntervalId) { clearInterval(global.hourlyIntervalId); }
-             const oneHourInMs = 60 * 1000; // Set back to 1 hour (3600 * 1000 ms)
-             global.hourlyIntervalId = setInterval(processRecentMessages, oneHourInMs);
-             console.log(`Hourly processing interval started (runs every ${oneHourInMs / 60000} minutes).`);
-             // Optional: Run once soon after connecting?
-             // setTimeout(processRecentMessages, 15000); // e.g., 15 seconds after connect
+            console.log('✅ Connection Opened - WhatsApp Bot is Active!');
+            // Clear any existing interval just in case before starting a new one
+            if (global.hourlyIntervalId) {
+                clearInterval(global.hourlyIntervalId);
+                delete global.hourlyIntervalId;
+            }
+            // <<<--- CORRECTED INTERVAL TIME ---
+            const oneHourInMs = 60 * 60 * 1000; // 1 hour in milliseconds
+            global.hourlyIntervalId = setInterval(processRecentMessages, oneHourInMs);
+            console.log(`Hourly processing interval started (runs every ${oneHourInMs / 60000} minutes).`);
+
+            // Optional: Run once shortly after connecting to process any messages missed during downtime?
+            console.log("Running initial message processing shortly after connection...");
+            setTimeout(processRecentMessages, 15000); // e.g., 15 seconds after connect
         }
     });
+
+    console.log("[Baileys]: Socket configured. Waiting for connection events...");
+
 } // End startSock function
 
-// Start the application
-startSock().catch(err => {
-    console.error("Fatal Error starting socket:", err);
-    process.exit(1);
+
+// --- Create a Simple HTTP Server for Health Checks ---  <<<--- ADDED THIS SECTION
+const server = http.createServer((req, res) => {
+    // Basic health check endpoint that Render/platforms can ping
+    if (req.url === '/health' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+    } else {
+        // You can add more info or just a simple response
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(`WhatsApp Bot Service is running. Last processed check: ${lastProcessedTime.toLocaleString()}`);
+    }
+});
+
+// --- Start the HTTP Server and THEN the Bot --- <<<--- MODIFIED THIS SECTION
+server.listen(PORT, () => {
+    console.log(`🚀 Server listening on port ${PORT}`);
+    console.log("Starting WhatsApp Bot connection logic...");
+    // Start the Baileys bot connection process *after* the HTTP server is ready
+    startSock().catch(err => {
+        console.error("❌ FATAL ERROR during bot startup:", err);
+        process.exit(1); // Exit if the bot fails critically during initial start
+    });
+});
+
+// Optional: Handle server errors more gracefully
+server.on('error', (error) => {
+    console.error(`❌ Server Error: ${error.message}`);
+    if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use. Is another instance running?`);
+    }
+    process.exit(1); // Exit if the server faces a critical error (like port conflict)
 });
